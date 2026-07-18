@@ -53,6 +53,7 @@ echo "Starting '$CONTAINER_NAME' (ctx=$CTX, ngl=$NGL, no mmproj)..."
   --name "$CONTAINER_NAME" \
   --runtime=nvidia \
   --network host \
+  --restart unless-stopped \
   -v "$MODEL_DIR:/models" \
   "$IMAGE" \
   llama-server \

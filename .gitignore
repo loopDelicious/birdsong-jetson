@@ -16,6 +16,11 @@ __pycache__/
 .cache/
 *.gguf
 
+# Voice assistant runtime artifacts (downloaded/generated on the Jetson)
+piper/
+voices/
+*.log
+
 # OS / editor
 .DS_Store
 .idea/

@@ -195,9 +195,65 @@ spd-say "audio path is working"               # quick spoken test
 The USB sound device (e.g. C-Media / PCM2902) shows up as a microphone
 (`arecord -l`) and is the input side for the future speech-to-text step.
 
+## Voice assistant (wake word -> speak)
+
+Talk to the chatbot hands-free: say a wake word, ask a question, hear the answer
+through the Bluetooth speaker, and keep a short back-and-forth conversation.
+
+```
+mic (USB) -> openWakeWord -> record -> Whisper (STT) -> Gemma -> Piper (TTS) -> speaker (Bluetooth)
+```
+
+| Stage | Tool | Notes |
+| --- | --- | --- |
+| Wake word | [openWakeWord](https://github.com/dscripka/openWakeWord) | default phrase "hey jarvis" (CPU) |
+| Speech-to-text | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) | `base.en`, int8, CPU |
+| LLM | Gemma 4 E2B | the same llama.cpp server on `:8080` |
+| Text-to-speech | [Piper](https://github.com/rhasspy/piper) | aarch64 binary + `en_US-lessac-medium` voice |
+| Audio I/O | PipeWire `parecord` / `paplay` | no PortAudio build needed |
+
+### Setup (on the Jetson)
+
+Requires the audio setup above (PipeWire + Bluetooth speaker + USB mic) and the
+LLM server running.
+
+```bash
+./scripts/setup-voice.sh          # venv + deps + Piper binary/voice + model downloads
+./scripts/start-llm.sh            # ensure Gemma is up
+./scripts/install-voice-service.sh
+```
+
+`setup-voice.sh` creates `.venv-voice/` and downloads Piper into `piper/` and voices
+into `voices/` (all git-ignored). `install-voice-service.sh` runs the assistant as a
+`systemd --user` service (`birdsong-voice`) that auto-restarts and starts on login.
+
+### Use it
+
+1. Say the wake word: **"hey jarvis"**
+2. Wait for the beep, then ask (e.g. "What hummingbirds live in San Francisco?")
+3. After the reply + beep, ask a follow-up with **no wake word** (short conversation window)
+4. Say "thank you" / "stop" / "goodbye", or just stay silent, to end the turn
+
+Run manually instead of as a service:
+
+```bash
+.venv-voice/bin/python voice/assistant.py           # options: --wake-model, --follow-up, --max-tokens ...
+```
+
+Watch logs / control the service:
+
+```bash
+tail -f voice.log
+systemctl --user restart birdsong-voice
+```
+
+Tuning knobs (env or flags): `BIRDSONG_WAKE` (wake model, e.g. `alexa`, `hey_mycroft`),
+`--wake-threshold`, `--follow-up` (seconds; `0` disables continuous mode),
+`--silence-hang`, `--max-tokens`. A custom wake phrase like "hey birdsong" needs a
+trained openWakeWord model (or Picovoice Porcupine).
+
 ## What’s next (not today)
 
-- Audio / video capture and bird detection
-- Injecting live detections into the chat context
-- Voice loop: mic (USB) -> speech-to-text -> Gemma -> text-to-speech -> speaker (Bluetooth)
+- Video capture + bird detection (CV model), feeding detections into the chat context
+- Grounding replies in live audio/visual detections ("what's at the feeder right now?")
 - Multimodal prompting (E2B supports image/audio; prefer vLLM when audio is required)
