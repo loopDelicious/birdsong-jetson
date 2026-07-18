@@ -139,8 +139,65 @@ birdsong-jetson/
     └── chat.py         # streaming CLI against /v1
 ```
 
+## Audio setup (for the future voice loop)
+
+Groundwork for a spoken assistant: speaker output over Bluetooth + a USB mic for input.
+
+### The one gotcha: NVIDIA disables Bluetooth audio by default
+
+Jetson ships `/lib/systemd/system/bluetooth.service.d/nv-bluetooth-service.conf`
+which starts `bluetoothd` with `--noplugin=audio,a2dp,avrcp`. That removes the
+`org.bluez.Media1` interface, so any Bluetooth speaker pairs but fails to connect
+its audio profile (`br-connection-profile-unavailable`). Override it:
+
+```bash
+sudo mkdir -p /etc/systemd/system/bluetooth.service.d
+sudo tee /etc/systemd/system/bluetooth.service.d/nv-bluetooth-service.conf >/dev/null <<'EOF'
+[Service]
+ExecStart=
+ExecStart=/usr/lib/bluetooth/bluetoothd
+EOF
+sudo systemctl daemon-reload
+sudo systemctl restart bluetooth
+```
+
+### Audio stack
+
+Use PipeWire (it handles Bluetooth A2DP more reliably than the half-installed
+PulseAudio that ships by default):
+
+```bash
+sudo dpkg --configure -a                       # if a prior apt run was interrupted
+sudo apt install -y pipewire pipewire-pulse wireplumber libspa-0.2-bluetooth
+systemctl --user --now disable pulseaudio.service pulseaudio.socket
+systemctl --user mask pulseaudio.service pulseaudio.socket
+systemctl --user --now enable pipewire pipewire-pulse wireplumber
+sudo reboot
+```
+
+`libspa-0.2-bluetooth` is required for PipeWire Bluetooth audio.
+
+### Pair a Bluetooth speaker (example: JBL Flip 5)
+
+Put the speaker in pairing mode (blinking), then:
+
+```bash
+export XDG_RUNTIME_DIR=/run/user/1000
+bluetoothctl --timeout 12 scan on            # find its MAC
+bluetoothctl pair <MAC>
+bluetoothctl trust <MAC>                      # auto-reconnect on boot
+bluetoothctl connect <MAC>
+pactl set-default-sink bluez_output.<MAC_with_underscores>.a2dp-sink
+pactl set-sink-volume  bluez_output.<MAC_with_underscores>.a2dp-sink 25%
+spd-say "audio path is working"               # quick spoken test
+```
+
+The USB sound device (e.g. C-Media / PCM2902) shows up as a microphone
+(`arecord -l`) and is the input side for the future speech-to-text step.
+
 ## What’s next (not today)
 
 - Audio / video capture and bird detection
 - Injecting live detections into the chat context
+- Voice loop: mic (USB) -> speech-to-text -> Gemma -> text-to-speech -> speaker (Bluetooth)
 - Multimodal prompting (E2B supports image/audio; prefer vLLM when audio is required)
