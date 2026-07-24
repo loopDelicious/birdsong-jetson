@@ -51,6 +51,11 @@ BT_WAKE_LEAD_MS = 300
 # Set BIRDSONG_OVERLAY="" to disable entirely.
 OVERLAY_URL = os.environ.get("BIRDSONG_OVERLAY", "http://127.0.0.1:8095/event")
 
+# Recent BirdNET detections, written by birds/detector.py. If the detector
+# isn't running the file simply doesn't exist and Birdy answers from general
+# knowledge only.
+RECENT_BIRDS_JSON = os.environ.get("BIRDS_RECENT_JSON", "/tmp/birdsong_recent.json")
+
 
 def emit(kind: str, **data) -> None:
     """Push a status event to the demo overlay (best-effort, never raises)."""
@@ -72,8 +77,36 @@ SYSTEM_PROMPT = (
     "knowledge of birds (identification, behavior, habitat, songs, range, seasonality). "
     "For example, if asked about hummingbirds in San Francisco, name likely species such as "
     "Anna's and Allen's hummingbirds. Only say you are unsure for genuinely ambiguous questions. "
-    "Do not greet the user or introduce yourself or state your name; just answer the question directly."
+    "Do not greet the user or introduce yourself; just answer the question directly. "
+    "A bird-song detector shares your microphone; when your context lists birds heard nearby "
+    "recently, use it to answer questions like 'what bird was that?' (most recent first). "
+    "If asked about detections and none are listed, say you have not heard any birds lately."
 )
+
+
+def recent_birds_context() -> str:
+    """One line describing birds BirdNET heard recently (see birds/detector.py).
+
+    Returns "" when the detector isn't running or nothing was heard lately, so
+    the caller can skip injecting anything.
+    """
+    try:
+        with open(RECENT_BIRDS_JSON, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return ""
+    now = time.time()
+    parts = []
+    for bird in data.get("birds", [])[:6]:
+        age_min = int(max(0.0, now - float(bird.get("ts", 0))) // 60)
+        if age_min > 20:
+            continue
+        when = "just now" if age_min == 0 else f"{age_min} min ago"
+        conf = int(round(float(bird.get("confidence", 0)) * 100))
+        parts.append(f"{bird['common_name']} ({when}, {conf}% confidence)")
+    if not parts:
+        return ""
+    return "Birds heard nearby recently, most recent first: " + "; ".join(parts) + "."
 
 
 def parse_args() -> argparse.Namespace:
@@ -352,8 +385,14 @@ def main() -> int:
             return False
         emit("prompt", text=text)
         history.append({"role": "user", "content": text})
+        # Transient copy of the conversation with live BirdNET detections folded
+        # into the system prompt -- fresh every turn, never stored in history.
+        messages = list(history)
+        birds_ctx = recent_birds_context()
+        if birds_ctx:
+            messages[0] = {"role": "system", "content": SYSTEM_PROMPT + "\n\n" + birds_ctx}
         try:
-            reply = speak_streaming(client, args.model, history, args.max_tokens, args)
+            reply = speak_streaming(client, args.model, messages, args.max_tokens, args)
         except Exception as exc:  # noqa: BLE001
             print(f"[error] LLM request failed: {exc}", file=sys.stderr)
             emit("error", message="Could not reach the language model.")

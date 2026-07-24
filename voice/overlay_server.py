@@ -45,6 +45,9 @@ _state = {
     "ttfw": None,   # seconds until the LLM's first word
     "total": None,  # seconds for the whole turn (STT + LLM + speech)
     "error": "",
+    # Recent BirdNET detections (birds/detector.py), newest first, deduped by
+    # species so the panel shows each bird once with its last-heard time.
+    "birds": [],
 }
 
 
@@ -75,6 +78,15 @@ def _apply(event: dict) -> None:
     elif kind == "error":
         _state["status"] = "error"
         _state["error"] = event.get("message", "")
+    elif kind == "bird":
+        entry = {
+            "common_name": event.get("common_name", ""),
+            "scientific_name": event.get("scientific_name", ""),
+            "confidence": event.get("confidence", 0),
+            "ts": event.get("ts", time.time()),
+        }
+        birds = [b for b in _state["birds"] if b["common_name"] != entry["common_name"]]
+        _state["birds"] = [entry] + birds[:11]  # newest first, max 12 species
 
 
 def _broadcast(event: dict) -> None:

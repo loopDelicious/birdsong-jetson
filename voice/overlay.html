@@ -79,6 +79,17 @@
   }
   .clearBtn:hover { border-color: var(--green); color: var(--green); }
 
+  #birdsCard { max-height: 220px; display: flex; flex-direction: column; }
+  #birdsCard .label { flex: none; }
+  #birds { overflow-y: auto; flex: 1; }
+  #birds:empty::after { content: "No birds heard yet."; color: #4d5560; font-style: italic; font-size: 14px; }
+  .birdRow { display: flex; align-items: baseline; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .birdRow:last-child { border-bottom: none; }
+  .birdName { font-size: 16px; font-weight: 600; }
+  .birdSci { font-size: 12px; color: var(--muted); font-style: italic; flex: 1; }
+  .birdMeta { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .birdConf { color: var(--green); }
+
   #logCard { max-height: 280px; display: flex; flex-direction: column; }
   #logCard .label { flex: none; }
   #history { overflow-y: auto; flex: 1; }
@@ -87,6 +98,7 @@
   .histItem:last-child { border-bottom: none; }
   .histQ { color: var(--muted); font-size: 13px; margin-bottom: 3px; }
   .histA { font-size: 15px; line-height: 1.4; }
+  .histMeta { font-size: 11px; color: #4d5560; margin-top: 5px; font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>
@@ -113,6 +125,11 @@
       <div id="error"></div>
     </div>
 
+    <div class="card" id="birdsCard">
+      <div class="label">BIRDS HEARD</div>
+      <div id="birds"></div>
+    </div>
+
     <div class="card" id="logCard">
       <div class="label">CONVERSATION LOG</div>
       <div id="history"></div>
@@ -130,6 +147,8 @@
   const el = id => document.getElementById(id);
   let response = "";
   let currentPrompt = "";
+  let currentTtfw = null;
+  let currentTotal = null;
   let history = [];
 
   function setStatus(s) {
@@ -160,9 +179,12 @@
   function shortModel(m) {
     return (m || "").replace(".gguf", "") || "\u2013";
   }
-  function addToHistory(prompt, text) {
+  function fmtMetric(v) {
+    return (v === null || v === undefined) ? null : v.toFixed(1) + "s";
+  }
+  function addToHistory(prompt, text, ttfw, total) {
     if (!prompt && !text) return;
-    history.unshift({ prompt, text });
+    history.unshift({ prompt, text, ttfw, total });
     history = history.slice(0, 15);
     renderHistory();
   }
@@ -180,11 +202,55 @@
       a.textContent = h.text;
       item.appendChild(q);
       item.appendChild(a);
+      const fw = fmtMetric(h.ttfw), tot = fmtMetric(h.total);
+      if (fw || tot) {
+        const meta = document.createElement("div");
+        meta.className = "histMeta";
+        meta.textContent = [fw && `first word ${fw}`, tot && `turn ${tot}`].filter(Boolean).join("  \u00b7  ");
+        item.appendChild(meta);
+      }
       node.appendChild(item);
     }
   }
+  let birds = [];
+  function timeAgo(ts) {
+    const s = Math.max(0, Date.now() / 1000 - ts);
+    if (s < 60) return "just now";
+    const m = Math.floor(s / 60);
+    if (m < 60) return m + " min ago";
+    return Math.floor(m / 60) + " h ago";
+  }
+  function renderBirds() {
+    const node = el("birds");
+    node.innerHTML = "";
+    for (const b of birds) {
+      const row = document.createElement("div");
+      row.className = "birdRow";
+      const name = document.createElement("span");
+      name.className = "birdName";
+      name.textContent = b.common_name;
+      const sci = document.createElement("span");
+      sci.className = "birdSci";
+      sci.textContent = b.scientific_name;
+      const meta = document.createElement("span");
+      meta.className = "birdMeta";
+      const conf = document.createElement("span");
+      conf.className = "birdConf";
+      conf.textContent = Math.round((b.confidence || 0) * 100) + "%";
+      meta.appendChild(conf);
+      meta.appendChild(document.createTextNode(" \u00b7 " + timeAgo(b.ts)));
+      row.appendChild(name);
+      row.appendChild(sci);
+      row.appendChild(meta);
+      node.appendChild(row);
+    }
+  }
+  setInterval(renderBirds, 30000);  // keep the "x min ago" labels fresh
+
   function clearCurrent() {
     currentPrompt = "";
+    currentTtfw = null;
+    currentTotal = null;
     setPrompt(null);
     response = "";
     renderResponse();
@@ -198,12 +264,20 @@
       case "snapshot":
         response = ev.response || "";
         currentPrompt = ev.prompt || "";
+        currentTtfw = ev.ttfw ?? null;
+        currentTotal = ev.total ?? null;
         setPrompt(ev.prompt);
         el("model").textContent = shortModel(ev.model);
         el("wakeword").textContent = "\u201chey " + (ev.wake || "birdy").replace(/^hey\s+/i, "") + "\u201d";
         setMetric("ttfw", ev.ttfw); setMetric("total", ev.total);
         if (ev.error) { el("error").textContent = ev.error; el("error").style.display = "block"; }
+        birds = ev.birds || [];
+        renderBirds();
         setStatus(ev.status || "offline");
+        break;
+      case "bird":
+        birds = [ev].concat(birds.filter(b => b.common_name !== ev.common_name)).slice(0, 12);
+        renderBirds();
         break;
       case "hello":
         el("model").textContent = shortModel(ev.model);
@@ -215,6 +289,8 @@
         break;
       case "prompt":
         currentPrompt = ev.text || "";
+        currentTtfw = null;
+        currentTotal = null;
         setPrompt(ev.text);
         response = "";
         setMetric("ttfw", null); setMetric("total", null);
@@ -227,11 +303,20 @@
       case "done":
         if (ev.text) response = ev.text;
         renderResponse();
-        addToHistory(currentPrompt, response);
+        addToHistory(currentPrompt, response, currentTtfw, currentTotal);
         break;
       case "metric":
-        if ("ttfw" in ev) setMetric("ttfw", ev.ttfw);
-        if ("total" in ev) setMetric("total", ev.total);
+        // "total" usually arrives just after "done" already logged this turn,
+        // so backfill the most recent matching log entry once it shows up.
+        if ("ttfw" in ev) { currentTtfw = ev.ttfw; setMetric("ttfw", ev.ttfw); }
+        if ("total" in ev) {
+          currentTotal = ev.total;
+          setMetric("total", ev.total);
+          if (history.length && history[0].prompt === currentPrompt) {
+            history[0].total = ev.total;
+            renderHistory();
+          }
+        }
         break;
       case "error":
         el("error").textContent = ev.message || "error";

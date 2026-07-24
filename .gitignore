@@ -1,5 +1,6 @@
 # Python
 .venv/
+.venv-*/
 venv/
 __pycache__/
 *.py[cod]
@@ -20,6 +21,9 @@ __pycache__/
 piper/
 voices/
 *.log
+
+# Bird detection runtime artifacts (generated on the Jetson)
+birds/birdsong.db
 
 # OS / editor
 .DS_Store

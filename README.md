@@ -273,8 +273,34 @@ port 8095), which relays them to the browser over Server-Sent Events. The
 overlay is optional — if it isn't running, the assistant works normally.
 Disable event emission with `BIRDSONG_OVERLAY=""`.
 
+## Bird detection (BirdNET, shares the mic)
+
+Continuous bird-song identification, ported from the Raspberry Pi
+[birdsong](https://github.com/loopDelicious/birdsong) project. BirdNET (tflite)
+analyzes 3-second windows from the **same USB mic** the voice assistant uses —
+PipeWire multiplexes one capture device across any number of clients, so the
+detector's 48 kHz stream and the assistant's 16 kHz stream coexist happily.
+BirdNET runs on the CPU (a few hundred MB), so nothing changes for the LLM.
+
+```bash
+# one-time setup on the Jetson (separate venv: tflite needs numpy<2)
+./scripts/setup-birds.sh
+./scripts/install-birds-service.sh   # systemd --user service, starts on boot
+```
+
+Each detection is:
+
+- printed to `birds.log` and logged to SQLite (`birds/birdsong.db`)
+- shown live in the demo overlay's "Birds heard" panel
+- written to `/tmp/birdsong_recent.json`, which the voice assistant folds into
+  Birdy's context — so after a detection you can ask *"hey Birdy, what bird did
+  you just hear?"*
+
+Tuning knobs (flags on `birds/detector.py`, or env in the service file):
+`--min-conf` (default 0.5), `--lat/--lon` + `--location` (species plausibility
+filter, defaults to San Francisco and on; `--no-location` to disable).
+
 ## What’s next (not today)
 
-- Video capture + bird detection (CV model), feeding detections into the chat context
-- Grounding replies in live audio/visual detections ("what's at the feeder right now?")
+- USB webcam at a feeder (close range) for visual verification via E2B's vision
 - Multimodal prompting (E2B supports image/audio; prefer vLLM when audio is required)

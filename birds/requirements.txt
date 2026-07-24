@@ -1,0 +1,17 @@
+# BirdNET detector dependencies for the Jetson Orin Nano
+# (Ubuntu 22.04 / aarch64, Python 3.10).
+#
+# IMPORTANT: numpy MUST stay <2. tflite-runtime 2.14.0 is compiled against
+# NumPy 1.x and segfaults under NumPy 2 ("_ARRAY_API not found"). That is also
+# why this stack lives in its own venv (.venv-birds): the voice assistant's
+# venv uses NumPy 2.
+#
+# (The Pi version of this project pinned scipy/numba for Python 3.11; those
+# pins don't exist for 3.10, so transitive deps resolve freely here.)
+
+numpy<2
+
+birdnetlib==0.18.1
+librosa==0.11.0
+tflite-runtime==2.14.0
+soundfile==0.14.0
