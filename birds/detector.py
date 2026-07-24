@@ -159,16 +159,19 @@ def read_settings(path: str) -> dict:
 
 
 def today_summary(db: sqlite3.Connection) -> list[dict]:
-    """Per-species tally for today, busiest species first (for the wall's
-    resting screen). Seeds from SQLite, so it survives a service restart."""
+    """Per-species tally for today, busiest species first. Backs both the
+    wall's resting screen and the Birds Heard list; reads from SQLite, so
+    the day's birds survive service restarts."""
     day_start = datetime.datetime.combine(
         datetime.date.today(), datetime.time.min).timestamp()
     rows = db.execute(
-        "SELECT common_name, COUNT(*), MAX(ts) FROM detections"
-        " WHERE ts >= ? GROUP BY common_name ORDER BY COUNT(*) DESC",
+        "SELECT common_name, scientific_name, COUNT(*), MAX(ts), MAX(confidence)"
+        " FROM detections WHERE ts >= ?"
+        " GROUP BY common_name, scientific_name ORDER BY COUNT(*) DESC",
         (day_start,),
     ).fetchall()
-    return [{"common_name": r[0], "count": r[1], "last_ts": r[2]} for r in rows]
+    return [{"common_name": r[0], "scientific_name": r[1], "count": r[2],
+             "last_ts": r[3], "confidence": r[4]} for r in rows]
 
 
 def main() -> int:

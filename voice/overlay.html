@@ -175,9 +175,11 @@
   }
   .clearBtn:hover { border-color: var(--green); color: var(--green); }
 
-  /* Birds-heard list lives under the wall stage in the left column. */
+  /* Birds-heard list lives under the wall stage in the left column. Hard
+     height cap (~4 rows): a busy day scrolls here rather than shrinking
+     the bird display above. */
   #birdsCard {
-    flex: none; max-height: 32vh; display: flex; flex-direction: column;
+    flex: none; max-height: 200px; display: flex; flex-direction: column;
     background: transparent; border: none; border-top: 1px solid var(--border);
     border-radius: 0; padding: 14px 18px;
   }
@@ -370,9 +372,13 @@
     return Math.floor(m / 60) + " h ago";
   }
   function renderBirds() {
+    // Backed by the detector's day-long tally (birds_today), so the list
+    // remembers every species heard today and survives restarts -- same
+    // memory the wall's resting screen uses. Newest first; scrolls.
     const node = el("birds");
     node.innerHTML = "";
-    for (const b of birds) {
+    const list = [...todaySpecies].sort((a, b) => (b.last_ts || 0) - (a.last_ts || 0));
+    for (const b of list) {
       const row = document.createElement("div");
       row.className = "birdRow";
       const name = document.createElement("span");
@@ -380,14 +386,16 @@
       name.textContent = b.common_name;
       const sci = document.createElement("span");
       sci.className = "birdSci";
-      sci.textContent = b.scientific_name;
+      sci.textContent = b.scientific_name || "";
       const meta = document.createElement("span");
       meta.className = "birdMeta";
       const conf = document.createElement("span");
       conf.className = "birdConf";
       conf.textContent = Math.round((b.confidence || 0) * 100) + "%";
       meta.appendChild(conf);
-      meta.appendChild(document.createTextNode(" \u00b7 " + timeAgo(b.ts)));
+      const extra = (b.count > 1 ? " \u00b7 \u00d7" + b.count : "")
+                  + " \u00b7 " + timeAgo(b.last_ts);
+      meta.appendChild(document.createTextNode(extra));
       row.appendChild(name);
       row.appendChild(sci);
       row.appendChild(meta);
@@ -537,24 +545,37 @@
         el("model").textContent = shortModel(ev.model);
         el("wakeword").textContent = "\u201chey " + (ev.wake || "birdy").replace(/^hey\s+/i, "") + "\u201d";
         birds = ev.birds || [];
-        renderBirds();
         applyWallCfg(ev.birds_config);
         todaySpecies = ev.birds_today || [];
+        renderBirds();
         for (const b of birds) ensureBirdImage(b.common_name, b.scientific_name);
         wallTick();
         setStatus(ev.status || "offline");
         break;
-      case "bird":
+      case "bird": {
         birds = [ev].concat(birds.filter(b => b.common_name !== ev.common_name)).slice(0, 12);
+        // Optimistic tally update; the detector's birds_today event follows
+        // within a moment with the authoritative day totals from SQLite.
+        const t = todaySpecies.find(s => s.common_name === ev.common_name);
+        if (t) {
+          t.count = (t.count || 0) + 1;
+          t.last_ts = ev.ts;
+          t.confidence = Math.max(t.confidence || 0, ev.confidence || 0);
+        } else {
+          todaySpecies.push({ common_name: ev.common_name, scientific_name: ev.scientific_name,
+                              count: 1, last_ts: ev.ts, confidence: ev.confidence });
+        }
         renderBirds();
         ensureBirdImage(ev.common_name, ev.scientific_name);
         wallTick();
         break;
+      }
       case "birds_config":
         applyWallCfg(ev);
         break;
       case "birds_today":
         todaySpecies = ev.species || [];
+        renderBirds();
         if (!heroKey) wallTick();  // refresh the resting screen's tally
         break;
       case "hello":
