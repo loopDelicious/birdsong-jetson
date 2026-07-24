@@ -191,7 +191,9 @@
   .birdMeta { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .birdConf { color: var(--green); }
 
-  #logCard { flex: 1; min-height: 120px; display: flex; flex-direction: column; }
+  /* The log reads as ambient history, not another card: no chrome. */
+  #logCard { flex: 1; min-height: 120px; display: flex; flex-direction: column;
+             background: transparent; border: none; border-radius: 0; }
   #logCard .label { flex: none; }
   #history { overflow-y: auto; flex: 1; }
   #history:empty::after { content: "No exchanges yet."; color: #4d5560; font-style: italic; font-size: 14px; }
