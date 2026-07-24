@@ -31,11 +31,17 @@ else
   DOCKER=(sudo docker)
 fi
 
-# Free unified memory: Ollama competes for the same 8GB pool.
+# Free unified memory: Ollama competes for the same 8GB pool. Use non-interactive
+# sudo so this is safe to run from a boot-time systemd service (never blocks on a
+# password prompt).
 if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet ollama; then
   echo "Stopping ollama to free memory..."
-  sudo systemctl stop ollama || true
+  sudo -n systemctl stop ollama 2>/dev/null || true
 fi
+
+# Reclaim page cache so the big CUDA allocation can find contiguous memory (CMA).
+# Best-effort: skipped silently if we can't sudo without a password.
+sudo -n sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches' 2>/dev/null || true
 
 # Download the model once to the host so it survives container recreation.
 mkdir -p "$MODEL_DIR"
@@ -53,7 +59,7 @@ echo "Starting '$CONTAINER_NAME' (ctx=$CTX, ngl=$NGL, no mmproj)..."
   --name "$CONTAINER_NAME" \
   --runtime=nvidia \
   --network host \
-  --restart unless-stopped \
+  --restart no \
   -v "$MODEL_DIR:/models" \
   "$IMAGE" \
   llama-server \

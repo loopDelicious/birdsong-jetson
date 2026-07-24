@@ -229,7 +229,7 @@ into `voices/` (all git-ignored). `install-voice-service.sh` runs the assistant 
 
 ### Use it
 
-1. Say the wake word: **"hey jarvis"**
+1. Say the wake word: **"hey birdy"** (custom openWakeWord model at `voice/models/hey_birdy.onnx`)
 2. Wait for the beep, then ask (e.g. "What hummingbirds live in San Francisco?")
 3. After the reply + beep, ask a follow-up with **no wake word** (short conversation window)
 4. Say "thank you" / "stop" / "goodbye", or just stay silent, to end the turn
@@ -251,6 +251,27 @@ Tuning knobs (env or flags): `BIRDSONG_WAKE` (wake model, e.g. `alexa`, `hey_myc
 `--wake-threshold`, `--follow-up` (seconds; `0` disables continuous mode),
 `--silence-hang`, `--max-tokens`. A custom wake phrase like "hey birdsong" needs a
 trained openWakeWord model (or Picovoice Porcupine).
+
+## Demo overlay (watch the conversation live)
+
+A small web page that shows the assistant's live status (idle / listening /
+thinking / speaking), the transcribed prompt, and Birdy's reply streaming in
+word-by-word — handy for demos and livestreams since the Jetson runs headless.
+Inspired by NVIDIA's [live-vlm-webui](https://github.com/nvidia-ai-iot/live-vlm-webui).
+
+```bash
+# one-time install on the Jetson (systemd --user service, starts on boot)
+./scripts/install-overlay-service.sh
+```
+
+Then open **`http://jetson-desktop.local:8095`** from any machine on your
+network (e.g. your Mac). For a livestream, add that URL as an OBS Browser Source.
+
+How it works: `voice/assistant.py` fires small JSON events (state changes,
+prompt, response tokens, latency) at `voice/overlay_server.py` (stdlib-only,
+port 8095), which relays them to the browser over Server-Sent Events. The
+overlay is optional — if it isn't running, the assistant works normally.
+Disable event emission with `BIRDSONG_OVERLAY=""`.
 
 ## What’s next (not today)
 

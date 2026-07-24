@@ -1,0 +1,26 @@
+# systemd --user unit that reconnects the JBL speaker on login/boot and sets it
+# as the default audio sink. Install with scripts/install-jbl-service.sh
+# (copies this to ~/.config/systemd/user/ and enables it). Requires the speaker
+# to be paired+trusted already and powered on. Adjust the path if your checkout
+# is not at /home/jetson/birdsong-jetson.
+[Unit]
+Description=Connect JBL speaker and set it as the default audio sink
+After=pipewire.service wireplumber.service pipewire-pulse.service
+Wants=pipewire.service wireplumber.service
+# Bound the retries: at most ~4 attempts before giving up (e.g. speaker is off).
+StartLimitIntervalSec=200
+StartLimitBurst=4
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+# Let PipeWire/BlueZ settle after boot before we try to connect.
+ExecStartPre=/bin/sleep 10
+ExecStart=/home/jetson/birdsong-jetson/scripts/jbl-connect.sh
+# Retry a bit later in case the speaker was still waking up.
+Restart=on-failure
+RestartSec=20
+
+[Install]
+WantedBy=default.target

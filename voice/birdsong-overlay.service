@@ -1,0 +1,21 @@
+# systemd --user unit for the Birdsong demo overlay: a small web page showing
+# the live prompt/response of the voice assistant. View from another machine
+# at http://jetson-desktop.local:8095
+# Install with scripts/install-overlay-service.sh. Uses the system python3
+# (the server is stdlib-only, no venv needed). Adjust paths if your checkout
+# is not at /home/jetson/birdsong-jetson.
+[Unit]
+Description=Birdsong demo overlay (live prompt/response web view)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/jetson/birdsong-jetson
+ExecStart=/usr/bin/python3 -u /home/jetson/birdsong-jetson/voice/overlay_server.py
+StandardOutput=append:/home/jetson/birdsong-jetson/overlay.log
+StandardError=append:/home/jetson/birdsong-jetson/overlay.log
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

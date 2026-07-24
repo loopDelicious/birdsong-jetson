@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Birdsong &middot; live demo</title>
+<style>
+  :root {
+    --bg: #0e1116;
+    --card: #161b22;
+    --border: #2d333b;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --green: #76b900;   /* NVIDIA green */
+    --amber: #d29922;
+    --red: #f85149;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; flex-direction: column;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  header {
+    display: flex; align-items: center; gap: 14px;
+    padding: 18px 28px; border-bottom: 1px solid var(--border);
+  }
+  header .logo { font-size: 26px; }
+  header h1 { font-size: 20px; font-weight: 600; margin: 0; letter-spacing: .3px; }
+  header h1 span { color: var(--green); }
+  .spacer { flex: 1; }
+  .conn { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .conn .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
+  .conn.ok .dot { background: var(--green); }
+
+  #status {
+    font-size: 14px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase;
+    padding: 8px 18px; border-radius: 999px; border: 1px solid var(--border);
+    color: var(--muted); background: var(--card); transition: all .25s ease;
+  }
+  #status.idle      { color: var(--muted); }
+  #status.listening { color: var(--green); border-color: var(--green); animation: pulse 1.4s infinite; }
+  #status.thinking  { color: var(--amber); border-color: var(--amber); }
+  #status.speaking  { color: #0e1116; background: var(--green); border-color: var(--green); }
+  #status.error     { color: var(--red); border-color: var(--red); }
+  #status.offline   { opacity: .5; }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 6px rgba(118, 185, 0, .15); } }
+
+  main { flex: 1; display: flex; flex-direction: column; gap: 18px; padding: 24px 28px; max-width: 1100px; width: 100%; margin: 0 auto; }
+  .label { font-size: 11px; font-weight: 700; letter-spacing: 1.5px; color: var(--muted); margin-bottom: 8px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 22px; }
+
+  #wakehint { text-align: center; color: var(--muted); font-size: 15px; padding: 6px 0; }
+  #wakehint b { color: var(--green); }
+
+  #prompt { font-size: 22px; line-height: 1.45; color: #c9d1d9; min-height: 32px; }
+  #prompt.empty { color: #4d5560; font-style: italic; }
+
+  #responseCard { flex: 1; }
+  #response { font-size: 26px; line-height: 1.55; min-height: 120px; white-space: pre-wrap; }
+  #response .cursor {
+    display: inline-block; width: 11px; height: 28px; margin-left: 3px; vertical-align: -4px;
+    background: var(--green); animation: blink 1s steps(1) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+  #error { color: var(--red); font-size: 14px; margin-top: 10px; display: none; }
+
+  footer {
+    display: flex; align-items: center; gap: 24px;
+    padding: 14px 28px; border-top: 1px solid var(--border);
+    font-size: 13px; color: var(--muted);
+  }
+  footer .metric b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+  .clearBtn {
+    background: transparent; border: 1px solid var(--border); color: var(--muted);
+    border-radius: 8px; padding: 7px 16px; font-size: 12px; cursor: pointer;
+    font-family: inherit;
+  }
+  .clearBtn:hover { border-color: var(--green); color: var(--green); }
+
+  #logCard { max-height: 280px; display: flex; flex-direction: column; }
+  #logCard .label { flex: none; }
+  #history { overflow-y: auto; flex: 1; }
+  #history:empty::after { content: "No exchanges yet."; color: #4d5560; font-style: italic; font-size: 14px; }
+  .histItem { padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .histItem:last-child { border-bottom: none; }
+  .histQ { color: var(--muted); font-size: 13px; margin-bottom: 3px; }
+  .histA { font-size: 15px; line-height: 1.4; }
+</style>
+</head>
+<body>
+  <header>
+    <div class="logo">&#128038;</div>
+    <h1>Birdsong <span>&middot; Birdy</span></h1>
+    <div class="spacer"></div>
+    <button id="clearBtn" class="clearBtn" title="Clear the current question and answer (keeps the log below)">Clear</button>
+    <div class="conn" id="conn"><span class="dot"></span><span id="connText">connecting&hellip;</span></div>
+    <div id="status" class="offline">offline</div>
+  </header>
+
+  <main>
+    <div id="wakehint">Say <b id="wakeword">&ldquo;hey birdy&rdquo;</b> to start</div>
+
+    <div class="card">
+      <div class="label">YOU ASKED</div>
+      <div id="prompt" class="empty">Waiting for a question&hellip;</div>
+    </div>
+
+    <div class="card" id="responseCard">
+      <div class="label">BIRDY</div>
+      <div id="response"></div>
+      <div id="error"></div>
+    </div>
+
+    <div class="card" id="logCard">
+      <div class="label">CONVERSATION LOG</div>
+      <div id="history"></div>
+    </div>
+  </main>
+
+  <footer>
+    <div class="metric">model <b id="model">&ndash;</b></div>
+    <div class="spacer"></div>
+    <div class="metric">first word <b id="ttfw">&ndash;</b></div>
+    <div class="metric">turn <b id="total">&ndash;</b></div>
+  </footer>
+
+<script>
+  const el = id => document.getElementById(id);
+  let response = "";
+  let currentPrompt = "";
+  let history = [];
+
+  function setStatus(s) {
+    const node = el("status");
+    node.textContent = s;
+    node.className = s;
+    el("wakehint").style.visibility = (s === "idle") ? "visible" : "hidden";
+    renderResponse();
+  }
+  function setPrompt(text) {
+    const node = el("prompt");
+    if (text) { node.textContent = text; node.className = ""; }
+    else { node.textContent = "Waiting for a question\u2026"; node.className = "empty"; }
+  }
+  function renderResponse() {
+    const speaking = el("status").className === "speaking" || el("status").className === "thinking";
+    el("response").innerHTML = "";
+    el("response").appendChild(document.createTextNode(response));
+    if (speaking) {
+      const c = document.createElement("span");
+      c.className = "cursor";
+      el("response").appendChild(c);
+    }
+  }
+  function setMetric(id, v) {
+    el(id).textContent = (v === null || v === undefined) ? "\u2013" : v.toFixed(1) + "s";
+  }
+  function shortModel(m) {
+    return (m || "").replace(".gguf", "") || "\u2013";
+  }
+  function addToHistory(prompt, text) {
+    if (!prompt && !text) return;
+    history.unshift({ prompt, text });
+    history = history.slice(0, 15);
+    renderHistory();
+  }
+  function renderHistory() {
+    const node = el("history");
+    node.innerHTML = "";
+    for (const h of history) {
+      const item = document.createElement("div");
+      item.className = "histItem";
+      const q = document.createElement("div");
+      q.className = "histQ";
+      q.textContent = h.prompt;
+      const a = document.createElement("div");
+      a.className = "histA";
+      a.textContent = h.text;
+      item.appendChild(q);
+      item.appendChild(a);
+      node.appendChild(item);
+    }
+  }
+  function clearCurrent() {
+    currentPrompt = "";
+    setPrompt(null);
+    response = "";
+    renderResponse();
+    el("error").style.display = "none";
+    setMetric("ttfw", null);
+    setMetric("total", null);
+  }
+
+  function handle(ev) {
+    switch (ev.kind) {
+      case "snapshot":
+        response = ev.response || "";
+        currentPrompt = ev.prompt || "";
+        setPrompt(ev.prompt);
+        el("model").textContent = shortModel(ev.model);
+        el("wakeword").textContent = "\u201chey " + (ev.wake || "birdy").replace(/^hey\s+/i, "") + "\u201d";
+        setMetric("ttfw", ev.ttfw); setMetric("total", ev.total);
+        if (ev.error) { el("error").textContent = ev.error; el("error").style.display = "block"; }
+        setStatus(ev.status || "offline");
+        break;
+      case "hello":
+        el("model").textContent = shortModel(ev.model);
+        setStatus("idle");
+        break;
+      case "state":
+        if (ev.status === "listening" || ev.status === "idle") { el("error").style.display = "none"; }
+        setStatus(ev.status);
+        break;
+      case "prompt":
+        currentPrompt = ev.text || "";
+        setPrompt(ev.text);
+        response = "";
+        setMetric("ttfw", null); setMetric("total", null);
+        renderResponse();
+        break;
+      case "token":
+        response += ev.text || "";
+        renderResponse();
+        break;
+      case "done":
+        if (ev.text) response = ev.text;
+        renderResponse();
+        addToHistory(currentPrompt, response);
+        break;
+      case "metric":
+        if ("ttfw" in ev) setMetric("ttfw", ev.ttfw);
+        if ("total" in ev) setMetric("total", ev.total);
+        break;
+      case "error":
+        el("error").textContent = ev.message || "error";
+        el("error").style.display = "block";
+        setStatus("error");
+        break;
+    }
+  }
+
+  el("clearBtn").addEventListener("click", clearCurrent);
+
+  function connect() {
+    const es = new EventSource("/events");
+    es.onopen = () => { el("conn").className = "conn ok"; el("connText").textContent = "live"; };
+    es.onmessage = m => { try { handle(JSON.parse(m.data)); } catch (e) {} };
+    es.onerror = () => {
+      el("conn").className = "conn"; el("connText").textContent = "reconnecting\u2026";
+      setStatus("offline");
+      // EventSource retries automatically.
+    };
+  }
+  connect();
+</script>
+</body>
+</html>

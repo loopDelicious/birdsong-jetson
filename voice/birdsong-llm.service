@@ -1,0 +1,30 @@
+# systemd SYSTEM unit that starts the Gemma llama.cpp container once at boot.
+# Install with scripts/install-llm-service.sh (copies this to
+# /etc/systemd/system/ and enables it). Adjust paths if your checkout is not
+# at /home/jetson/birdsong-jetson.
+#
+# Why a one-shot instead of docker's --restart policy: on the 8GB Orin Nano a
+# failed CUDA load fragments the contiguous memory pool (CMA). docker's restart
+# policy then retries in a tight loop, permanently fragmenting memory until the
+# next reboot. A single delayed attempt avoids that death spiral.
+[Unit]
+Description=Birdsong LLM (Gemma 4 E2B via llama.cpp container)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=jetson
+Group=jetson
+# Let boot settle so the GUI / other services aren't mid-allocation when we
+# make the large contiguous CUDA allocation.
+ExecStartPre=/bin/sleep 25
+ExecStart=/home/jetson/birdsong-jetson/scripts/start-llm.sh
+ExecStop=/usr/bin/docker stop birdsong-llm
+# Do NOT auto-restart: a failed load must not loop and fragment CMA.
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

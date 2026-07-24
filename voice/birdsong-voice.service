@@ -10,6 +10,8 @@ After=pipewire.service wireplumber.service pipewire-pulse.service
 Type=simple
 WorkingDirectory=/home/jetson/birdsong-jetson
 Environment=XDG_RUNTIME_DIR=/run/user/1000
+# Custom-trained wake word: "hey birdy" (openWakeWord ONNX model).
+Environment=BIRDSONG_WAKE=/home/jetson/birdsong-jetson/voice/models/hey_birdy.onnx
 ExecStart=/home/jetson/birdsong-jetson/.venv-voice/bin/python -u /home/jetson/birdsong-jetson/voice/assistant.py
 StandardOutput=append:/home/jetson/birdsong-jetson/voice.log
 StandardError=append:/home/jetson/birdsong-jetson/voice.log
