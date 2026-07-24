@@ -80,14 +80,15 @@ SYSTEM_PROMPT = (
     "Do not greet the user or introduce yourself; just answer the question directly. "
     "A bird-song detector shares your microphone; when your context lists birds heard nearby "
     "recently, use it to answer questions like 'what bird was that?' (most recent first). "
+    "Your context may also list all birds heard today; use it for questions about earlier birds. "
     "If asked about detections and none are listed, say you have not heard any birds lately."
 )
 
 
 def recent_birds_context() -> str:
-    """One line describing birds BirdNET heard recently (see birds/detector.py).
+    """Birds BirdNET heard recently plus the day's tally (see birds/detector.py).
 
-    Returns "" when the detector isn't running or nothing was heard lately, so
+    Returns "" when the detector isn't running or nothing was heard today, so
     the caller can skip injecting anything.
     """
     try:
@@ -96,6 +97,7 @@ def recent_birds_context() -> str:
     except (OSError, ValueError):
         return ""
     now = time.time()
+    lines = []
     parts = []
     for bird in data.get("birds", [])[:6]:
         age_min = int(max(0.0, now - float(bird.get("ts", 0))) // 60)
@@ -104,9 +106,17 @@ def recent_birds_context() -> str:
         when = "just now" if age_min == 0 else f"{age_min} min ago"
         conf = int(round(float(bird.get("confidence", 0)) * 100))
         parts.append(f"{bird['common_name']} ({when}, {conf}% confidence)")
-    if not parts:
-        return ""
-    return "Birds heard nearby recently, most recent first: " + "; ".join(parts) + "."
+    if parts:
+        lines.append("Birds heard nearby recently, most recent first: " + "; ".join(parts) + ".")
+    today = []
+    for sp in data.get("today", [])[:8]:
+        when = time.strftime("%-I:%M %p", time.localtime(float(sp.get("last_ts", now))))
+        count = int(sp.get("count", 1))
+        times = f"{count} times, last at {when}" if count > 1 else f"once, at {when}"
+        today.append(f"{sp['common_name']} ({times})")
+    if today:
+        lines.append("All birds heard today: " + "; ".join(today) + ".")
+    return " ".join(lines)
 
 
 def parse_args() -> argparse.Namespace:

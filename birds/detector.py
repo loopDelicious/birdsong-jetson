@@ -168,12 +168,18 @@ def open_db(path: str) -> sqlite3.Connection:
     return db
 
 
-def write_recent(path: str, recent: dict[str, dict]) -> None:
-    """Atomically rewrite the recent-detections JSON the assistant reads."""
+def write_recent(path: str, recent: dict[str, dict], today: list[dict]) -> None:
+    """Atomically rewrite the recent-detections JSON the assistant reads.
+
+    Includes the day's per-species tally (from SQLite) alongside the
+    last-few-minutes window, so Birdy can answer both "what was that?" and
+    "what birds have you heard today?" -- and the day's memory survives
+    detector restarts.
+    """
     entries = sorted(recent.values(), key=lambda e: e["ts"], reverse=True)[:10]
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
-        json.dump({"updated": time.time(), "birds": entries}, f)
+        json.dump({"updated": time.time(), "birds": entries, "today": today}, f)
     os.replace(tmp, path)
 
 
@@ -255,10 +261,15 @@ def main() -> int:
     tmp_wav = os.path.join(tempfile.gettempdir(), "birdnet_window.wav")
 
     try:
+        debug = os.environ.get("BIRDS_DEBUG") == "1"
         while True:
             apply_settings()
+            t0 = time.time()
             mic.flush()  # drop backlog accumulated during the previous analysis
+            t1 = time.time()
             data = mic.read_exact(window_bytes)
+            if debug:
+                print(f"[debug] flush={t1-t0:.2f}s read={time.time()-t1:.2f}s", flush=True)
             if len(data) < window_bytes:
                 print("[mic] capture stream ended", file=sys.stderr, flush=True)
                 return 1
@@ -302,8 +313,10 @@ def main() -> int:
                 emit("birds_today", species=today_summary(db))
 
             # Age out stale species and refresh the JSON the assistant reads.
+            # (Every window, not just on detections: the assistant must see the
+            # day's tally right after a restart, before any new bird sings.)
             recent = {k: v for k, v in recent.items() if now - v["ts"] < args.recent_window}
-            write_recent(args.recent_json, recent)
+            write_recent(args.recent_json, recent, today_summary(db))
     except KeyboardInterrupt:
         return 0
     finally:
