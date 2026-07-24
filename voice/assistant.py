@@ -338,13 +338,13 @@ def main() -> int:
         emit("state", status="thinking")
         text = transcribe(audio)
         print(f"[you] {text}")
-        if not text:
-            emit("state", status="listening")
-            return True
-        if text.lower().strip() in JUNK:
-            print("[skip] likely noise/hallucination")
-            emit("state", status="listening")
-            return True
+        if not text or text.lower().strip() in JUNK:
+            # Likely a false speech-detection (ambient noise), not a real question.
+            # End the listening session here rather than looping for another
+            # follow-up round -- otherwise a noisy room can trigger a cascade of
+            # "listening again" beeps that never seem to stop.
+            print("[skip] no usable speech (noise/hallucination) - ending turn")
+            return False
         if text.lower().strip(" .!?") in {"stop", "quit", "exit", "goodbye", "never mind", "that's all", "thank you"}:
             emit("prompt", text=text)
             emit("done", text="Okay, talk soon.")
@@ -398,8 +398,6 @@ def main() -> int:
                 audio = record_utterance(mic, args.max_record, args.silence_hang, wait_for_speech=wait)
                 if audio.size < SAMPLE_RATE // 2:  # timed out with no speech -> stop listening
                     print("[listen] timed out, no speech detected")
-                    play(stop_beep_path)
-                    mic.flush(0.2)
                     break
                 cont = handle_turn(audio)
                 mic.flush(0.6)  # avoid hearing our own speech tail
@@ -407,6 +405,10 @@ def main() -> int:
                     break
                 first = False
 
+            # Exactly one "done listening" cue, whichever way the session ended
+            # (timeout, stop word, or a false speech-detection with nothing usable).
+            play(stop_beep_path)
+            mic.flush(0.2)
             wake.reset()
             emit("state", status="idle")
             print(f'\nListening for wake word: "{wake_label}"')
