@@ -78,8 +78,9 @@ SYSTEM_PROMPT = (
     "For example, if asked about hummingbirds in San Francisco, name likely species such as "
     "Anna's and Allen's hummingbirds. Only say you are unsure for genuinely ambiguous questions. "
     "Do not greet the user or introduce yourself; just answer the question directly. "
-    "A bird-song detector shares your microphone; when your context lists birds heard nearby "
-    "recently, use it to answer questions like 'what bird was that?' (most recent first). "
+    "A bird-song detector shares your microphone. Vague questions like 'what was that?', "
+    "'what bird is that?', or 'who is singing?' refer to the most recently heard bird in your "
+    "context: name it and say how long ago it was heard. "
     "Your context may also list all birds heard today; use it for questions about earlier birds. "
     "If asked about detections and none are listed, say you have not heard any birds lately."
 )
@@ -97,19 +98,34 @@ def recent_birds_context() -> str:
     except (OSError, ValueError):
         return ""
     now = time.time()
+
+    def ago(ts: float) -> str:
+        age_min = int(max(0.0, now - ts) // 60)
+        if age_min == 0:
+            return "just now"
+        if age_min < 60:
+            return f"{age_min} min ago"
+        return f"{age_min // 60} h {age_min % 60} min ago"
+
     lines = []
+    # The single most recent bird, with no age cap, so vague questions like
+    # "what was that?" always have an answer even during a quiet spell.
+    today_list = data.get("today", [])
+    if today_list:
+        latest = max(today_list, key=lambda s: float(s.get("last_ts", 0)))
+        lines.append(f"Most recently heard bird: {latest['common_name']}, "
+                     f"{ago(float(latest.get('last_ts', now)))}.")
     parts = []
     for bird in data.get("birds", [])[:6]:
         age_min = int(max(0.0, now - float(bird.get("ts", 0))) // 60)
         if age_min > 20:
             continue
-        when = "just now" if age_min == 0 else f"{age_min} min ago"
         conf = int(round(float(bird.get("confidence", 0)) * 100))
-        parts.append(f"{bird['common_name']} ({when}, {conf}% confidence)")
+        parts.append(f"{bird['common_name']} ({ago(float(bird.get('ts', now)))}, {conf}% confidence)")
     if parts:
         lines.append("Birds heard nearby recently, most recent first: " + "; ".join(parts) + ".")
     today = []
-    for sp in data.get("today", [])[:8]:
+    for sp in today_list[:8]:
         when = time.strftime("%-I:%M %p", time.localtime(float(sp.get("last_ts", now))))
         count = int(sp.get("count", 1))
         times = f"{count} times, last at {when}" if count > 1 else f"once, at {when}"
