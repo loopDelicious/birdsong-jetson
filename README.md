@@ -259,6 +259,15 @@ thinking / speaking), the transcribed prompt, and Birdy's reply streaming in
 word-by-word — handy for demos and livestreams since the Jetson runs headless.
 Inspired by NVIDIA's [live-vlm-webui](https://github.com/nvidia-ai-iot/live-vlm-webui).
 
+![Demo overlay: ambient bird wall and birds-heard list on the left, live Birdy conversation with log and latency metrics on the right](docs/overlay.png)
+
+The left third is the ambient bird wall (ported from the
+[Pi birdsong project](https://github.com/loopDelicious/birdsong)): detected
+birds fade in with a photo, and when it's quiet the wall rests on the day's
+visitor tally, with the running "Birds heard" list beneath. The right side is
+the live conversation: current question and answer, a running log with
+latency metrics, and the model name in the footer.
+
 ```bash
 # one-time install on the Jetson (systemd --user service, starts on boot)
 ./scripts/install-overlay-service.sh
