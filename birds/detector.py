@@ -88,21 +88,49 @@ def parse_args() -> argparse.Namespace:
 
 
 class MicStream:
-    """Continuous 48 kHz mono capture via parecord (a PipeWire client)."""
+    """Continuous 48 kHz mono capture via parecord (a PipeWire client).
+
+    parecord can wedge: it connects to the audio server but its recording
+    stream never materializes (seen after boot races and WirePlumber
+    restarts), leaving a silent pipe and a "deaf" service. The constructor
+    therefore probes that audio actually flows, respawning until it does.
+    """
 
     def __init__(self, source: str = ""):
-        cmd = ["parecord", "--format=s16le", "--rate=%d" % RATE, "--channels=1", "--raw"]
+        self.cmd = ["parecord", "--format=s16le", "--rate=%d" % RATE,
+                    "--channels=1", "--raw"]
         if source:
-            cmd += ["--device", source]
-        self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            self.cmd += ["--device", source]
+        self._connect()
+
+    def _connect(self) -> None:
+        """Spawn parecord and verify audio actually flows, retrying as needed."""
+        for attempt in range(5):
+            self.proc = subprocess.Popen(self.cmd, stdout=subprocess.PIPE,
+                                         stderr=subprocess.DEVNULL)
+            readable, _, _ = select.select([self.proc.stdout], [], [], 8.0)
+            if readable:
+                return  # audio is flowing
+            print("[mic] parecord produced no audio in 8s; respawning",
+                  file=sys.stderr, flush=True)
+            self.close()
+            time.sleep(2.0)
+        raise RuntimeError("microphone capture failed: parecord never produced audio")
 
     def read_exact(self, nbytes: int) -> bytes:
         buf = b""
         while len(buf) < nbytes:
-            part = self.proc.stdout.read(nbytes - len(buf))
+            readable, _, _ = select.select([self.proc.stdout], [], [], 10.0)
+            part = self.proc.stdout.read1(nbytes - len(buf)) if readable else b""
             if not part:
-                break
-            buf += part
+                # Silent for 10 s (or EOF): the stream died out from under us
+                # (audio server / WirePlumber restart). Reconnect and carry on.
+                print("[mic] capture stalled or ended; respawning parecord",
+                      file=sys.stderr, flush=True)
+                self.close()
+                self._connect()
+            else:
+                buf += part
         return buf
 
     def flush(self) -> None:
@@ -113,7 +141,7 @@ class MicStream:
             r, _, _ = select.select([fd], [], [], 0.0)
             if not r:
                 break
-            if not fd.read(65536):
+            if not fd.read1(65536):
                 break
 
     def close(self) -> None:

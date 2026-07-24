@@ -10,6 +10,10 @@ After=pipewire.service wireplumber.service pipewire-pulse.service
 Type=simple
 WorkingDirectory=/home/jetson/birdsong-jetson
 Environment=XDG_RUNTIME_DIR=/run/user/1000
+# Wait for PipeWire to expose the USB mic before capturing. Starting during
+# the boot race leaves parecord attached to nothing: the service looks
+# "active" but is deaf (blocked forever on a silent pipe).
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 45); do pactl list sources short 2>/dev/null | grep -q alsa_input && exit 0; sleep 2; done; echo "no mic source after 90s" >&2; exit 1'
 ExecStart=/home/jetson/birdsong-jetson/.venv-birds/bin/python -u /home/jetson/birdsong-jetson/birds/detector.py
 StandardOutput=append:/home/jetson/birdsong-jetson/birds.log
 StandardError=append:/home/jetson/birdsong-jetson/birds.log
