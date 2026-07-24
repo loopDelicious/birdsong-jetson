@@ -17,9 +17,102 @@
   }
   * { box-sizing: border-box; }
   body {
-    margin: 0; min-height: 100vh; display: flex; flex-direction: column;
+    margin: 0; height: 100vh; display: flex;
     background: var(--bg); color: var(--text);
     font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    overflow: hidden;
+  }
+  #right { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow-y: auto; }
+
+  /* ---- Bird wall (left third): ambient display ported from the Pi app ---- */
+  #wall {
+    flex: none; width: 33.33%; min-width: 300px; position: relative;
+    overflow: hidden; background: #0b0f14; border-right: 1px solid var(--border);
+  }
+  .wlayer { position: absolute; inset: 0; opacity: 0; transition: opacity 1.6s ease; }
+  .wlayer.on { opacity: 1; }
+  .wlayer .haze {
+    position: absolute; inset: 0; background-size: cover; background-position: center;
+    transform: scale(1.6); filter: blur(30px) brightness(.82) saturate(1.12);
+    animation: wpan 50s ease-in-out infinite alternate;
+  }
+  @keyframes wpan { from { transform: scale(1.54) translate(-1.5%,-1%); }
+                    to   { transform: scale(1.7)  translate(1.5%,-2.5%); } }
+  .wlayer .subject {
+    position: absolute; inset: 0; background-size: cover; background-position: center;
+    opacity: 1; transition: opacity 1.6s ease;
+    -webkit-mask-image: radial-gradient(ellipse 66% 74% at 50% 47%, #000 34%, transparent 86%);
+    mask-image: radial-gradient(ellipse 66% 74% at 50% 47%, #000 34%, transparent 86%);
+  }
+  #wallPhotos { position: absolute; inset: 0; }
+  #wallPhotos.resting .subject { opacity: 0; }
+  #wallPhotos.resting .haze { filter: blur(42px) brightness(.6) saturate(1.05); }
+  #wallScrim {
+    position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(56deg, rgba(7,9,12,.85) 0%, rgba(7,9,12,.28) 40%, rgba(7,9,12,0) 64%);
+  }
+  #wallInfo { position: absolute; left: 0; bottom: 0; padding: 26px 24px; max-width: 92%; transition: opacity 1.2s ease; }
+  #wallInfo.hide { opacity: 0; }
+  #wCommon { font-family: Georgia, "Times New Roman", serif; font-size: clamp(22px, 2.6vw, 40px);
+             line-height: 1.05; text-shadow: 0 2px 24px rgba(0,0,0,.55); }
+  #wSci { font-style: italic; color: #e7b59a; font-size: 15px; margin-top: 6px; }
+  #wMeta { color: var(--muted); font-size: 13px; margin-top: 10px; }
+  #wAlso { color: #8b96a3; font-size: 12px; margin-top: 8px; }
+  #wallIdle {
+    position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; text-align: center; gap: 14px; padding: 0 22px;
+    opacity: 0; transition: opacity 1.4s ease; pointer-events: none;
+  }
+  #wallIdle.show { opacity: 1; }
+  #wallIdle .wdot { width: 10px; height: 10px; border-radius: 50%; background: #9fe3c5;
+                    animation: breathe 4s ease-in-out infinite; }
+  @keyframes breathe { 0%,100% { opacity: .5; transform: scale(1); }
+                       50%     { opacity: .95; transform: scale(1.14); } }
+  #wallIdle .qlabel { color: #c4cdd6; font-size: 13px; letter-spacing: 3px; }
+  #wallIdle .qstat { font-family: Georgia, serif; font-size: 21px; }
+  #wallIdle .qlist { color: #8b96a3; font-size: 12px; line-height: 1.6; }
+  #wallFab {
+    position: absolute; bottom: 16px; right: 16px; z-index: 5; width: 42px; height: 42px;
+    border-radius: 50%; background: var(--card); border: 1px solid var(--border);
+    color: var(--text); cursor: pointer; opacity: .45; transition: opacity .25s;
+    display: flex; align-items: center; justify-content: center; font-size: 18px;
+  }
+  #wallFab:hover { opacity: 1; }
+  #wallPanel {
+    position: absolute; bottom: 68px; right: 16px; z-index: 5; width: 270px; max-width: 88%;
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 16px 16px 12px; box-shadow: 0 18px 50px rgba(0,0,0,.6);
+    transform: translateY(10px) scale(.98); opacity: 0; pointer-events: none; transition: .2s ease;
+  }
+  #wallPanel.open { transform: none; opacity: 1; pointer-events: auto; }
+  #wallPanel h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+                  color: var(--muted); margin: 0 0 10px; }
+  .wrow { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+          padding: 10px 0; border-top: 1px solid var(--border); }
+  .wrow:first-of-type { border-top: none; }
+  .wrow .name { font-size: 14px; }
+  .wrow .sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .toggle { width: 42px; height: 24px; border-radius: 999px; background: #2a3645;
+            position: relative; cursor: pointer; transition: .2s; flex: none; }
+  .toggle.on { background: var(--green); }
+  .toggle::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px;
+                   border-radius: 50%; background: #fff; transition: .2s; }
+  .toggle.on::after { left: 21px; }
+  .stepper { display: flex; align-items: center; gap: 8px; }
+  .stepper button { width: 28px; height: 28px; border-radius: 8px; background: var(--bg);
+                    border: 1px solid var(--border); color: var(--text); font-size: 16px;
+                    cursor: pointer; font-family: inherit; }
+  .stepper .val { min-width: 38px; text-align: center; font-variant-numeric: tabular-nums; font-size: 14px; }
+  .wclear { width: 100%; margin-top: 12px; padding: 9px; border-radius: 10px; background: var(--bg);
+            border: 1px solid var(--border); color: var(--text); font-size: 13px; cursor: pointer;
+            font-family: inherit; }
+  .wclear:hover { border-color: var(--green); color: var(--green); }
+
+  @media (max-width: 900px) {
+    body { flex-direction: column; overflow: auto; }
+    #wall { width: 100%; min-width: 0; height: 44vh; flex: none;
+            border-right: none; border-bottom: 1px solid var(--border); }
+    #right { overflow-y: visible; }
   }
   header {
     display: flex; align-items: center; gap: 14px;
@@ -102,6 +195,44 @@
 </style>
 </head>
 <body>
+  <aside id="wall">
+    <div id="wallPhotos" class="resting">
+      <div class="wlayer" id="wlayerA"><div class="haze"></div><div class="subject"></div></div>
+      <div class="wlayer" id="wlayerB"><div class="haze"></div><div class="subject"></div></div>
+    </div>
+    <div id="wallScrim"></div>
+    <div id="wallInfo" class="hide">
+      <div id="wCommon"></div>
+      <div id="wSci"></div>
+      <div id="wMeta"></div>
+      <div id="wAlso"></div>
+    </div>
+    <div id="wallIdle" class="show">
+      <div class="wdot"></div>
+      <div class="qlabel">LISTENING</div>
+      <div class="qstat" id="qstat">no visitors yet today</div>
+      <div class="qlist" id="qlist"></div>
+    </div>
+    <button id="wallFab" title="Detector controls">&#9881;</button>
+    <div id="wallPanel">
+      <h3>Detector</h3>
+      <div class="wrow">
+        <div><div class="name">Local filter</div><div class="sub">Only species plausible near your location</div></div>
+        <div class="toggle" id="locToggle"></div>
+      </div>
+      <div class="wrow">
+        <div><div class="name">Min confidence</div><div class="sub">Higher = fewer false positives</div></div>
+        <div class="stepper">
+          <button id="confDown">&minus;</button>
+          <span class="val" id="confVal">0.50</span>
+          <button id="confUp">+</button>
+        </div>
+      </div>
+      <button class="wclear" id="wallClear">Clear &rarr; resting</button>
+    </div>
+  </aside>
+
+  <div id="right">
   <header>
     <div class="logo">&#128038;</div>
     <h1>Birdsong <span>&middot; Birdy</span></h1>
@@ -142,6 +273,7 @@
     <div class="metric">first word <b id="ttfw">&ndash;</b></div>
     <div class="metric">turn <b id="total">&ndash;</b></div>
   </footer>
+  </div><!-- /#right -->
 
 <script>
   const el = id => document.getElementById(id);
@@ -247,6 +379,126 @@
   }
   setInterval(renderBirds, 30000);  // keep the "x min ago" labels fresh
 
+  // ---- Bird wall (ambient display, ported from the Pi app) ----
+  const WALL_HOLD_S = 90;         // how long a bird stays on the wall after last heard
+  let wallCfg = { min_conf: 0.5, use_location: true };
+  let todaySpecies = [];          // [{common_name, count, last_ts}] busiest first
+  let wallClearedAt = 0;          // "Clear -> resting" hides birds heard before this
+  let heroKey = null, heroImg = null, wallActive = 0;
+  const wlayers = [el("wlayerA"), el("wlayerB")];
+  const imgCache = new Map();     // scientific_name -> url or null (resolved)
+  const imgPending = new Set();
+
+  function ensureBirdImage(common, sci) {
+    if (!sci || imgCache.has(sci) || imgPending.has(sci)) return;
+    imgPending.add(sci);
+    (async () => {
+      let url = null;
+      for (const title of [common, sci]) {
+        if (!title) continue;
+        try {
+          const r = await fetch("https://en.wikipedia.org/api/rest_v1/page/summary/"
+                                + encodeURIComponent(title.replace(/ /g, "_")));
+          if (r.ok) {
+            const j = await r.json();
+            url = (j.originalimage && j.originalimage.source)
+               || (j.thumbnail && j.thumbnail.source) || null;
+            if (url) break;
+          }
+        } catch (e) {}
+      }
+      imgCache.set(sci, url);
+      imgPending.delete(sci);
+      // Photo arrived for the bird currently on the wall: swap it in place.
+      if (heroKey === sci && url && heroImg !== url) {
+        heroImg = url;
+        setWallLayer(wlayers[wallActive], url);
+      }
+    })();
+  }
+  function setWallLayer(layer, url) {
+    const v = url ? 'url("' + url + '")' : "";
+    layer.querySelector(".haze").style.backgroundImage = v;
+    layer.querySelector(".subject").style.backgroundImage = v;
+  }
+  function wallCrossfade(url) {
+    const next = wallActive ^ 1;
+    setWallLayer(wlayers[next], url);
+    wlayers[next].classList.add("on");
+    wlayers[wallActive].classList.remove("on");
+    wallActive = next;
+  }
+  function heardAt(ts) {
+    return new Date(ts * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toLowerCase();
+  }
+  function partOfDay() {
+    const h = new Date().getHours();
+    return h >= 5 && h < 12 ? "morning" : h >= 12 && h < 17 ? "afternoon"
+         : h >= 17 && h < 21 ? "evening" : "night";
+  }
+  function wallTick() {
+    const now = Date.now() / 1000;
+    const active = birds.filter(b => b.ts > wallClearedAt && now - b.ts <= WALL_HOLD_S);
+    if (active.length) {
+      el("wallPhotos").classList.remove("resting");
+      el("wallIdle").classList.remove("show");
+      el("wallInfo").classList.remove("hide");
+      // Keep the current hero while it's still active; else newest bird wins.
+      const hero = active.find(b => b.scientific_name === heroKey) || active[0];
+      if (hero.scientific_name !== heroKey) {
+        heroKey = hero.scientific_name;
+        heroImg = imgCache.get(heroKey) || null;
+        wallCrossfade(heroImg);
+        el("wCommon").textContent = hero.common_name;
+        el("wSci").textContent = hero.scientific_name;
+        ensureBirdImage(hero.common_name, hero.scientific_name);
+      }
+      el("wMeta").textContent = "last heard at " + heardAt(hero.ts);
+      const others = active.filter(b => b.scientific_name !== heroKey).map(b => b.common_name);
+      el("wAlso").textContent = others.length ? "also now \u00b7 " + others.slice(0, 3).join(" \u00b7 ") : "";
+    } else {
+      heroKey = null;
+      el("wallInfo").classList.add("hide");
+      el("wallPhotos").classList.add("resting");
+      el("wallIdle").classList.add("show");
+      el("wallIdle").querySelector(".qlabel").textContent =
+        ("a quiet " + partOfDay()).toUpperCase();
+      const n = todaySpecies.length;
+      el("qstat").textContent = n ? n + (n === 1 ? " visitor" : " visitors") + " today"
+                                  : "no visitors yet today";
+      el("qlist").textContent = todaySpecies.slice(0, 6).map(t => t.common_name).join(" \u00b7 ");
+    }
+  }
+  setInterval(wallTick, 1500);
+
+  function applyWallCfg(cfg) {
+    if (!cfg) return;
+    if ("min_conf" in cfg && cfg.min_conf != null) wallCfg.min_conf = cfg.min_conf;
+    if ("use_location" in cfg && cfg.use_location != null) wallCfg.use_location = cfg.use_location;
+    el("confVal").textContent = Number(wallCfg.min_conf).toFixed(2);
+    el("locToggle").classList.toggle("on", !!wallCfg.use_location);
+  }
+  async function postControl(body) {
+    try {
+      const r = await fetch("/control", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (r.ok) applyWallCfg(await r.json());
+    } catch (e) {}
+  }
+  el("wallFab").addEventListener("click", () => el("wallPanel").classList.toggle("open"));
+  el("locToggle").addEventListener("click", () => postControl({ use_location: !wallCfg.use_location }));
+  el("confUp").addEventListener("click", () =>
+    postControl({ min_conf: Math.min(0.95, wallCfg.min_conf + 0.05) }));
+  el("confDown").addEventListener("click", () =>
+    postControl({ min_conf: Math.max(0.10, wallCfg.min_conf - 0.05) }));
+  el("wallClear").addEventListener("click", () => {
+    wallClearedAt = Date.now() / 1000;
+    el("wallPanel").classList.remove("open");
+    wallTick();
+  });
+
   function clearCurrent() {
     currentPrompt = "";
     currentTtfw = null;
@@ -273,11 +525,24 @@
         if (ev.error) { el("error").textContent = ev.error; el("error").style.display = "block"; }
         birds = ev.birds || [];
         renderBirds();
+        applyWallCfg(ev.birds_config);
+        todaySpecies = ev.birds_today || [];
+        for (const b of birds) ensureBirdImage(b.common_name, b.scientific_name);
+        wallTick();
         setStatus(ev.status || "offline");
         break;
       case "bird":
         birds = [ev].concat(birds.filter(b => b.common_name !== ev.common_name)).slice(0, 12);
         renderBirds();
+        ensureBirdImage(ev.common_name, ev.scientific_name);
+        wallTick();
+        break;
+      case "birds_config":
+        applyWallCfg(ev);
+        break;
+      case "birds_today":
+        todaySpecies = ev.species || [];
+        if (!heroKey) wallTick();  // refresh the resting screen's tally
         break;
       case "hello":
         el("model").textContent = shortModel(ev.model);

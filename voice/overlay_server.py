@@ -31,6 +31,10 @@ HOST = os.environ.get("OVERLAY_HOST", "0.0.0.0")
 PORT = int(os.environ.get("OVERLAY_PORT", "8095"))
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "overlay.html")
 
+# Where the bird wall's control panel settings land. birds/detector.py polls
+# this file between analysis windows and applies min_conf / use_location live.
+SETTINGS_JSON = os.environ.get("BIRDS_SETTINGS_JSON", "/tmp/birdsong_settings.json")
+
 _lock = threading.Lock()
 _subscribers: set[queue.Queue] = set()
 
@@ -48,6 +52,9 @@ _state = {
     # Recent BirdNET detections (birds/detector.py), newest first, deduped by
     # species so the panel shows each bird once with its last-heard time.
     "birds": [],
+    # Detector runtime settings + today's per-species tally, for the bird wall.
+    "birds_config": {"min_conf": 0.5, "use_location": True},
+    "birds_today": [],
 }
 
 
@@ -87,6 +94,12 @@ def _apply(event: dict) -> None:
         }
         birds = [b for b in _state["birds"] if b["common_name"] != entry["common_name"]]
         _state["birds"] = [entry] + birds[:11]  # newest first, max 12 species
+    elif kind == "birds_config":
+        for key in ("min_conf", "use_location"):
+            if key in event:
+                _state["birds_config"][key] = event[key]
+    elif kind == "birds_today":
+        _state["birds_today"] = event.get("species", [])
 
 
 def _broadcast(event: dict) -> None:
@@ -155,7 +168,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, b"not found")
 
     def do_POST(self):
-        if self.path != "/event":
+        if self.path not in ("/event", "/control"):
             self._send(404, b"not found")
             return
         try:
@@ -166,8 +179,36 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, json.JSONDecodeError):
             self._send(400, b"bad json")
             return
+        if self.path == "/control":
+            self._control(event)
+            return
         _broadcast(event)
         self._send(200, b"ok")
+
+    def _control(self, data: dict) -> None:
+        """Bird-wall control panel: update detector settings. Writes the
+        settings file that birds/detector.py polls between windows, and
+        broadcasts the new config so every open page updates immediately
+        (the detector re-emits its own confirmation once applied)."""
+        with _lock:
+            cfg = dict(_state["birds_config"])
+        if "min_conf" in data:
+            try:
+                cfg["min_conf"] = max(0.1, min(0.95, round(float(data["min_conf"]), 2)))
+            except (TypeError, ValueError):
+                pass
+        if "use_location" in data:
+            cfg["use_location"] = bool(data["use_location"])
+        tmp = SETTINGS_JSON + ".tmp"
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(cfg, f)
+            os.replace(tmp, SETTINGS_JSON)
+        except OSError as exc:
+            self._send(500, f"settings write failed: {exc}".encode())
+            return
+        _broadcast({"kind": "birds_config", **cfg})
+        self._send(200, json.dumps(cfg).encode(), "application/json")
 
 
 def main() -> None:

@@ -45,6 +45,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # isn't running, emit() fails silently and detection is unaffected.
 OVERLAY_URL = os.environ.get("BIRDSONG_OVERLAY", "http://127.0.0.1:8095/event")
 
+# Runtime settings written by the overlay's control panel (POST /control on
+# overlay_server.py) and picked up here between analysis windows, so min-conf
+# and the location filter can be adjusted live from the browser.
+SETTINGS_JSON = os.environ.get("BIRDS_SETTINGS_JSON", "/tmp/birdsong_settings.json")
+
 
 def emit(kind: str, **data) -> None:
     """Push an event to the demo overlay (best-effort, never raises)."""
@@ -144,6 +149,28 @@ def write_recent(path: str, recent: dict[str, dict]) -> None:
     os.replace(tmp, path)
 
 
+def read_settings(path: str) -> dict:
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def today_summary(db: sqlite3.Connection) -> list[dict]:
+    """Per-species tally for today, busiest species first (for the wall's
+    resting screen). Seeds from SQLite, so it survives a service restart."""
+    day_start = datetime.datetime.combine(
+        datetime.date.today(), datetime.time.min).timestamp()
+    rows = db.execute(
+        "SELECT common_name, COUNT(*), MAX(ts) FROM detections"
+        " WHERE ts >= ? GROUP BY common_name ORDER BY COUNT(*) DESC",
+        (day_start,),
+    ).fetchall()
+    return [{"common_name": r[0], "count": r[1], "last_ts": r[2]} for r in rows]
+
+
 def main() -> int:
     args = parse_args()
 
@@ -157,8 +184,40 @@ def main() -> int:
     db = open_db(args.db)
     mic = MicStream(args.source)
     window_bytes = int(args.seconds * RATE) * 2
-    loc = f" | location ({args.lat},{args.lon})" if args.location else ""
-    print(f"Listening | {args.seconds:.0f}s windows | min_conf={args.min_conf}{loc}", flush=True)
+
+    # Live-tunable settings: CLI/env defaults, overridden by the overlay's
+    # control panel via SETTINGS_JSON (checked between windows by mtime).
+    min_conf = args.min_conf
+    use_location = args.location
+    settings_mtime = -1.0
+
+    def apply_settings() -> None:
+        nonlocal min_conf, use_location, settings_mtime
+        try:
+            mtime = os.path.getmtime(SETTINGS_JSON)
+        except OSError:
+            return
+        if mtime == settings_mtime:
+            return
+        settings_mtime = mtime
+        data = read_settings(SETTINGS_JSON)
+        new_conf = max(0.1, min(0.95, float(data.get("min_conf", min_conf))))
+        new_loc = bool(data.get("use_location", use_location))
+        if (new_conf, new_loc) != (min_conf, use_location):
+            min_conf, use_location = new_conf, new_loc
+            if not use_location:
+                # birdnetlib leaves the location allow-list set on the reused
+                # analyzer; clear it or the filter sticks after toggling off.
+                analyzer.custom_species_list = []
+            print(f"[config] min_conf={min_conf:.2f}"
+                  f" location={'on' if use_location else 'off'}", flush=True)
+        emit("birds_config", min_conf=min_conf, use_location=use_location)
+
+    apply_settings()  # pick up panel settings from before a restart
+    loc = f" | location ({args.lat},{args.lon})" if use_location else ""
+    print(f"Listening | {args.seconds:.0f}s windows | min_conf={min_conf}{loc}", flush=True)
+    emit("birds_config", min_conf=min_conf, use_location=use_location)
+    emit("birds_today", species=today_summary(db))
 
     # species -> {"common_name", "scientific_name", "confidence", "ts", "count"}
     recent: dict[str, dict] = {}
@@ -166,6 +225,7 @@ def main() -> int:
 
     try:
         while True:
+            apply_settings()
             mic.flush()  # drop backlog accumulated during the previous analysis
             data = mic.read_exact(window_bytes)
             if len(data) < window_bytes:
@@ -177,8 +237,8 @@ def main() -> int:
                 w.setframerate(RATE)
                 w.writeframes(data)
 
-            kwargs = {"min_conf": args.min_conf}
-            if args.location:
+            kwargs = {"min_conf": min_conf}
+            if use_location:
                 kwargs.update(lat=args.lat, lon=args.lon, date=datetime.datetime.now())
             with contextlib.redirect_stdout(io.StringIO()):
                 rec = Recording(analyzer, tmp_wav, **kwargs)
@@ -206,6 +266,9 @@ def main() -> int:
                 }
                 emit("bird", common_name=name, scientific_name=d["scientific_name"],
                      confidence=round(conf, 2), ts=now)
+
+            if rec.detections:
+                emit("birds_today", species=today_summary(db))
 
             # Age out stale species and refresh the JSON the assistant reads.
             recent = {k: v for k, v in recent.items() if now - v["ts"] < args.recent_window}
