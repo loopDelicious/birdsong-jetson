@@ -421,6 +421,9 @@ def main() -> int:
             # Wake detected -> converse until a listening window passes in silence.
             wake.reset()
             print("\n[wake] listening...")
+            # Re-announce model/wake word: the overlay server loses them if it
+            # restarted after our startup "hello" (footer shows an empty model).
+            emit("hello", model=args.model, wake=wake_label)
             first = True
             while True:
                 play(beep_path)
