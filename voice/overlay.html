@@ -26,9 +26,10 @@
 
   /* ---- Bird wall (left third): ambient display ported from the Pi app ---- */
   #wall {
-    flex: none; width: 33.33%; min-width: 300px; position: relative;
+    flex: none; width: 33.33%; min-width: 300px; display: flex; flex-direction: column;
     overflow: hidden; background: #0b0f14; border-right: 1px solid var(--border);
   }
+  #wallStage { position: relative; flex: 1; min-height: 0; overflow: hidden; }
   .wlayer { position: absolute; inset: 0; opacity: 0; transition: opacity 1.6s ease; }
   .wlayer.on { opacity: 1; }
   .wlayer .haze {
@@ -110,8 +111,10 @@
 
   @media (max-width: 900px) {
     body { flex-direction: column; overflow: auto; }
-    #wall { width: 100%; min-width: 0; height: 44vh; flex: none;
+    #wall { width: 100%; min-width: 0; flex: none;
             border-right: none; border-bottom: 1px solid var(--border); }
+    #wallStage { flex: none; height: 40vh; }
+    #birdsCard { max-height: 22vh; }
     #right { overflow-y: visible; }
   }
   header {
@@ -172,7 +175,12 @@
   }
   .clearBtn:hover { border-color: var(--green); color: var(--green); }
 
-  #birdsCard { max-height: 220px; display: flex; flex-direction: column; }
+  /* Birds-heard list lives under the wall stage in the left column. */
+  #birdsCard {
+    flex: none; max-height: 32vh; display: flex; flex-direction: column;
+    background: transparent; border: none; border-top: 1px solid var(--border);
+    border-radius: 0; padding: 14px 18px;
+  }
   #birdsCard .label { flex: none; }
   #birds { overflow-y: auto; flex: 1; }
   #birds:empty::after { content: "No birds heard yet."; color: #4d5560; font-style: italic; font-size: 14px; }
@@ -196,6 +204,7 @@
 </head>
 <body>
   <aside id="wall">
+    <div id="wallStage">
     <div id="wallPhotos" class="resting">
       <div class="wlayer" id="wlayerA"><div class="haze"></div><div class="subject"></div></div>
       <div class="wlayer" id="wlayerB"><div class="haze"></div><div class="subject"></div></div>
@@ -230,6 +239,12 @@
       </div>
       <button class="wclear" id="wallClear">Clear &rarr; resting</button>
     </div>
+    </div><!-- /#wallStage -->
+
+    <div id="birdsCard">
+      <div class="label">BIRDS HEARD</div>
+      <div id="birds"></div>
+    </div>
   </aside>
 
   <div id="right">
@@ -254,11 +269,6 @@
       <div class="label">BIRDY</div>
       <div id="response"></div>
       <div id="error"></div>
-    </div>
-
-    <div class="card" id="birdsCard">
-      <div class="label">BIRDS HEARD</div>
-      <div id="birds"></div>
     </div>
 
     <div class="card" id="logCard">
