@@ -192,6 +192,29 @@ pactl set-sink-volume  bluez_output.<MAC_with_underscores>.a2dp-sink 25%
 spd-say "audio path is working"               # quick spoken test
 ```
 
+### Or skip Bluetooth: a USB speaker (current setup)
+
+A wired USB speaker is simpler and more reliable: plug it in and WirePlumber
+makes it the default sink automatically. Verify and set the volume:
+
+```bash
+export XDG_RUNTIME_DIR=/run/user/1000
+pactl list sinks short                        # alsa_output.usb-...analog-stereo
+pactl set-sink-volume @DEFAULT_SINK@ 75%
+paplay /usr/share/sounds/alsa/Front_Center.wav
+```
+
+If the JBL auto-connect service was installed, disable it so it stops trying
+to reconnect and steal the default sink:
+
+```bash
+systemctl --user disable --now birdsong-jbl
+```
+
+The voice service sets `BIRDSONG_LEAD_MS=100`: wired speakers only need a tiny
+silent lead-in before playback. Set it to ~300 when going back to Bluetooth
+(A2DP wake-from-idle latency clips the start of playback).
+
 The USB sound device (e.g. C-Media / PCM2902) shows up as a microphone
 (`arecord -l`) and is the input side for the future speech-to-text step.
 

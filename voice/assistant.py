@@ -44,7 +44,9 @@ CHUNK_BYTES = CHUNK_SAMPLES * 2
 # gets clipped. A short silent lead-in on the *same* playback (beep, or the
 # first sentence of a reply) gives that latency something harmless to eat
 # instead of the tone or the first word of speech.
-BT_WAKE_LEAD_MS = 300
+# Wired (USB/analog) speakers need far less: ~100 ms covers the sink resuming
+# from suspend. Tune with BIRDSONG_LEAD_MS (birdsong-voice.service sets it).
+BT_WAKE_LEAD_MS = int(os.environ.get("BIRDSONG_LEAD_MS", "300"))
 
 # Demo overlay (voice/overlay_server.py). Events are fire-and-forget: if the
 # overlay isn't running, emit() fails silently and the assistant is unaffected.
