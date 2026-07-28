@@ -188,6 +188,11 @@ def _prepend_silence(wav_path: str, ms: int) -> None:
         w.writeframes(silence + frames)
 
 
+def log(msg: str) -> None:
+    """Print with a wall-clock stamp; voice.log timing questions come up a lot."""
+    print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
+
+
 def play(path: str) -> None:
     subprocess.run(["paplay", path], check=False)
 
@@ -304,7 +309,7 @@ def record_utterance(mic: MicStream, max_record: float, silence_hang: float,
             silence_start = None
 
     dur = sum(f.size for f in frames) / SAMPLE_RATE
-    print(f"[rec] floor={floor:.0f} start_thr={start_thresh:.0f} peak_rms={peak:.0f} "
+    log(f"[rec] floor={floor:.0f} start_thr={start_thresh:.0f} peak_rms={peak:.0f} "
           f"speech={'yes' if started else 'no'} dur={dur:.1f}s")
     if not frames:
         return np.zeros(0, dtype=np.float32)
@@ -426,13 +431,13 @@ def main() -> int:
         t_turn = time.time()
         emit("state", status="thinking")
         text = transcribe(audio)
-        print(f"[you] {text}")
+        log(f"[you] {text}")
         if not text or text.lower().strip() in JUNK:
             # Likely a false speech-detection (ambient noise), not a real question.
             # End the listening session here rather than looping for another
             # follow-up round -- otherwise a noisy room can trigger a cascade of
             # "listening again" beeps that never seem to stop.
-            print("[skip] no usable speech (noise/hallucination) - ending turn")
+            log("[skip] no usable speech (noise/hallucination) - ending turn")
             return False
         if text.lower().strip(" .!?") in {"stop", "quit", "exit", "goodbye", "never mind", "that's all", "thank you"}:
             emit("prompt", text=text)
@@ -455,7 +460,7 @@ def main() -> int:
             synth_and_play(args, "Sorry, I could not reach the language model.", lead_pad=True)
             history.pop()
             return True
-        print(f"[birdsong] {reply}")
+        log(f"[birdsong] {reply}")
         emit("done", text=reply)
         emit("metric", total=round(time.time() - t_turn, 2))
         history.append({"role": "assistant", "content": reply})
@@ -476,7 +481,14 @@ def main() -> int:
 
             # Wake detected -> converse until a listening window passes in silence.
             wake.reset()
-            print("\n[wake] listening...")
+            # Fresh conversation each session: accumulated history from earlier
+            # sessions measurably distracts the model from the live bird context
+            # (a vague "what was that?" after a long chat gets answered from the
+            # stale dialogue flow instead). Follow-ups in *this* session still
+            # share history.
+            del history[1:]
+            print()
+            log("[wake] listening...")
             # Re-announce model/wake word: the overlay server loses them if it
             # restarted after our startup "hello" (footer shows an empty model).
             emit("hello", model=args.model, wake=wake_label)
@@ -492,10 +504,10 @@ def main() -> int:
                 emit("state", status="listening")
                 wait = 6.0 if first else args.follow_up
                 if not first:
-                    print(f"[listening for follow-up ~{wait:.0f}s]")
+                    log(f"[listening for follow-up ~{wait:.0f}s]")
                 audio = record_utterance(mic, args.max_record, args.silence_hang, wait_for_speech=wait)
                 if audio.size < SAMPLE_RATE // 2:  # timed out with no speech -> stop listening
-                    print("[listen] timed out, no speech detected")
+                    log("[listen] timed out, no speech detected")
                     break
                 cont = handle_turn(audio)
                 mic.flush(0.6)  # avoid hearing our own speech tail
